@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { ArrowLeft, RefreshCw, CheckCircle2, XCircle, Clock, Edit, Upload, Trash2 } from 'lucide-react'
+import { ArrowLeft, RefreshCw, CheckCircle2, XCircle, Clock, Edit, Upload, Trash2, AlertTriangle } from 'lucide-react'
 import Link from 'next/link'
 
 export default function ReconciliationPage() {
@@ -20,6 +20,8 @@ export default function ReconciliationPage() {
   const [syncing, setSyncing] = useState(false)
   const [editingItem, setEditingItem] = useState<QueuedAction | null>(null)
   const [editForm, setEditForm] = useState<CheckInRecord | null>(null)
+  const [syncedCount, setSyncedCount] = useState(0)
+  const [notSyncedCount, setNotSyncedCount] = useState(0)
 
   useEffect(() => {
     loadQueue()
@@ -32,6 +34,14 @@ export default function ReconciliationPage() {
       await db.init()
       const allQueue = await db.getAllQueue()
       setQueue(allQueue.sort((a, b) => b.timestamp - a.timestamp))
+
+      // Get all check-in records to calculate stats
+      const allRecords = await db.getAllCheckIns()
+      const synced = allRecords.filter(r => r.synced).length
+      const notSynced = allRecords.filter(r => !r.synced).length
+
+      setSyncedCount(synced)
+      setNotSyncedCount(notSynced)
     } catch (err) {
       console.error('[Skylytics] Failed to load queue:', err)
     } finally {
@@ -64,11 +74,11 @@ export default function ReconciliationPage() {
     try {
       // Update the check-in record
       await db.saveCheckIn(editForm)
-      
+
       // Update the queue item payload
       editingItem.payload = editForm
       await db.addToQueue(editingItem)
-      
+
       alert('Record updated successfully')
       setEditingItem(null)
       setEditForm(null)
@@ -103,6 +113,21 @@ export default function ReconciliationPage() {
     }
   }
 
+  async function handleResetDatabase() {
+    if (!confirm('⚠️ This will delete ALL data from the local database. Are you sure?')) {
+      return
+    }
+
+    try {
+      await db.clearAllData()
+      alert('Database cleared successfully. Reload the page to reseed with sample data.')
+      await loadQueue()
+    } catch (err) {
+      console.error('[Skylytics] Failed to clear database:', err)
+      alert('Failed to clear database')
+    }
+  }
+
   function formatDateTime(timestamp: number): string {
     const date = new Date(timestamp)
     return date.toLocaleString('en-US', {
@@ -116,9 +141,10 @@ export default function ReconciliationPage() {
     })
   }
 
-  const pendingCount = queue.filter(q => q.status === 'pending').length
-  const syncedCount = queue.filter(q => q.status === 'synced').length
+  // Sync queue should be number of records not yet synced
+  const pendingCount = notSyncedCount
   const failedCount = queue.filter(q => q.status === 'failed').length
+  const queueSyncedCount = queue.filter(q => q.status === 'synced').length
 
   if (loading) {
     return (
@@ -155,13 +181,13 @@ export default function ReconciliationPage() {
           <div className="grid gap-4 md:grid-cols-3">
             <Card>
               <CardHeader className="pb-3">
-                <CardDescription>Pending Sync</CardDescription>
+                <CardDescription>Sync Queue</CardDescription>
                 <CardTitle className="text-3xl">{pendingCount}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Clock className="size-4" />
-                  Waiting for sync
+                  Δ Checked-in passengers
                 </div>
               </CardContent>
             </Card>
@@ -199,7 +225,7 @@ export default function ReconciliationPage() {
               <CardTitle>Actions</CardTitle>
               <CardDescription>Sync offline data to cloud</CardDescription>
             </CardHeader>
-            <CardContent className="flex gap-3">
+            <CardContent className="flex flex-wrap gap-3">
               <Button onClick={handleManualSync} disabled={syncing} className="gap-2">
                 <Upload className={`size-4 ${syncing ? 'animate-spin' : ''}`} />
                 {syncing ? 'Syncing to Cloud...' : 'Sync to Cloud'}
@@ -208,25 +234,33 @@ export default function ReconciliationPage() {
                 <RefreshCw className="size-4" />
                 Refresh
               </Button>
-              {syncedCount > 0 && (
+              {queueSyncedCount > 0 && (
                 <Button variant="outline" onClick={handleClearSynced} className="gap-2 text-muted-foreground">
                   <Trash2 className="size-4" />
-                  Clear Synced ({syncedCount})
+                  Clear Synced Queue ({queueSyncedCount})
                 </Button>
               )}
+              <Button
+                variant="destructive"
+                onClick={handleResetDatabase}
+                className="gap-2 ml-auto"
+              >
+                <AlertTriangle className="size-4" />
+                Reset Database
+              </Button>
             </CardContent>
           </Card>
 
-          {/* Queue Items */}
+          {/* Recent Operations */}
           <Card>
             <CardHeader>
-              <CardTitle>Sync Queue ({queue.length})</CardTitle>
-              <CardDescription>All check-in and baggage operations</CardDescription>
+              <CardTitle>Recent Operations ({queue.length})</CardTitle>
+              <CardDescription>Check-in and baggage operations history</CardDescription>
             </CardHeader>
             <CardContent>
               {queue.length === 0 ? (
                 <p className="text-center text-sm text-muted-foreground py-8">
-                  No operations in queue
+                  No operations recorded
                 </p>
               ) : (
                 <div className="space-y-3">
@@ -240,8 +274,8 @@ export default function ReconciliationPage() {
                           <p className="font-semibold">{item.payload.passengerName}</p>
                           <Badge variant={
                             item.status === 'synced' ? 'default' :
-                            item.status === 'failed' ? 'destructive' :
-                            'secondary'
+                              item.status === 'failed' ? 'destructive' :
+                                'secondary'
                           }>
                             {item.status === 'synced' && <CheckCircle2 className="mr-1 size-3" />}
                             {item.status === 'failed' && <XCircle className="mr-1 size-3" />}
@@ -249,6 +283,12 @@ export default function ReconciliationPage() {
                             {item.status}
                           </Badge>
                           <Badge variant="outline">{item.type}</Badge>
+                          {item.payload.synced && (
+                            <Badge variant="default" className="bg-emerald-600">
+                              <CheckCircle2 className="mr-1 size-3" />
+                              Synced to Cloud
+                            </Badge>
+                          )}
                         </div>
                         <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
                           <span>PNR: <span className="font-mono font-semibold text-foreground">{item.payload.pnr}</span></span>
@@ -289,7 +329,7 @@ export default function ReconciliationPage() {
               Update passenger and flight information
             </DialogDescription>
           </DialogHeader>
-          
+
           {editForm && (
             <div className="grid gap-4 py-4">
               <div className="grid grid-cols-2 gap-4">

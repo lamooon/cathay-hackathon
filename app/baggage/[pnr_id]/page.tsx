@@ -156,11 +156,12 @@ export default function BaggagePage() {
     }
   }
 
-  function handleSendData() {
+  function handleCheckInNext() {
     setShowNotification(true)
     setTimeout(() => {
       setShowNotification(false)
-    }, 3000)
+      router.push('/check-in')
+    }, 2000)
   }
 
   async function handleRemoveBaggage(tagNumber: string) {
@@ -356,18 +357,12 @@ export default function BaggagePage() {
             </CardContent>
           </Card>
 
-          <div className="flex gap-3">
-            <Button 
-              onClick={handleSendData}
-              variant="outline"
-              className="flex-1"
-            >
-              Send Data
-            </Button>
-            <Link href="/check-in" className="flex-1">
-              <Button className="w-full">Check-In Next Passenger</Button>
-            </Link>
-          </div>
+          <Button 
+            onClick={handleCheckInNext}
+            className="w-full"
+          >
+            Check-In Next Passenger
+          </Button>
 
           {/* Notification */}
           {showNotification && (

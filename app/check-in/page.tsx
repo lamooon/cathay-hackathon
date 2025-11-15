@@ -17,13 +17,39 @@ export default function CheckInPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [selectedPassenger, setSelectedPassenger] = useState<CheckInRecord | null>(null)
+  const [allPNRs, setAllPNRs] = useState<string[]>([])
+  const [filteredPNRs, setFilteredPNRs] = useState<string[]>([])
+  const [showDropdown, setShowDropdown] = useState(false)
 
   useEffect(() => {
     db.init().catch(console.error)
+    loadAllPNRs()
   }, [])
 
-  async function handleSearch() {
-    if (!pnr.trim()) {
+  useEffect(() => {
+    if (pnr.trim()) {
+      const filtered = allPNRs.filter(p => p.toUpperCase().includes(pnr.toUpperCase()))
+      setFilteredPNRs(filtered.slice(0, 10)) // Limit to 10 suggestions
+      setShowDropdown(filtered.length > 0)
+    } else {
+      setFilteredPNRs([])
+      setShowDropdown(false)
+    }
+  }, [pnr, allPNRs])
+
+  async function loadAllPNRs() {
+    try {
+      const allRecords = await db.getAllCheckIns()
+      const uniquePNRs = Array.from(new Set(allRecords.map(r => r.pnr)))
+      setAllPNRs(uniquePNRs)
+    } catch (err) {
+      console.error('[Skylytics] Failed to load PNRs:', err)
+    }
+  }
+
+  async function handleSearch(selectedPNR?: string) {
+    const searchPNR = selectedPNR || pnr
+    if (!searchPNR.trim()) {
       setError('Please enter a PNR')
       return
     }
@@ -32,15 +58,16 @@ export default function CheckInPage() {
     setError('')
     setPassengers([])
     setSelectedPassenger(null)
+    setShowDropdown(false)
 
     try {
       // Use local IndexedDB only
-      console.log('Searching for PNR:', pnr.toUpperCase())
-      const results = await db.getCheckInByPNR(pnr.toUpperCase())
+      console.log('Searching for PNR:', searchPNR.toUpperCase())
+      const results = await db.getCheckInByPNR(searchPNR.toUpperCase())
       console.log('Search results:', results)
       
       if (results.length === 0) {
-        setError(`No passengers found for PNR: ${pnr}`)
+        setError(`No passengers found for PNR: ${searchPNR}`)
       } else {
         // Mark as checked in
         const updatedResults = results.map(p => ({
@@ -62,6 +89,12 @@ export default function CheckInPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  function handlePNRSelect(selectedPNR: string) {
+    setPnr(selectedPNR)
+    setShowDropdown(false)
+    handleSearch(selectedPNR)
   }
 
   async function handleCheckIn(passenger: CheckInRecord) {
@@ -123,16 +156,33 @@ export default function CheckInPage() {
               <CardDescription>Enter the 6-character booking reference to look up passengers</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="flex gap-3">
-                <Input
-                  placeholder="Enter PNR (e.g., ABC123)"
-                  value={pnr}
-                  onChange={(e) => setPnr(e.target.value.toUpperCase())}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                  className="flex-1 text-lg font-mono uppercase"
-                  maxLength={6}
-                />
-                <Button onClick={handleSearch} disabled={loading} className="gap-2">
+              <div className="flex gap-3 relative">
+                <div className="flex-1 relative">
+                  <Input
+                    placeholder="Enter PNR (e.g., ABC123)"
+                    value={pnr}
+                    onChange={(e) => setPnr(e.target.value.toUpperCase())}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                    onFocus={() => pnr.trim() && setShowDropdown(filteredPNRs.length > 0)}
+                    onBlur={() => setTimeout(() => setShowDropdown(false), 200)}
+                    className="text-lg font-mono uppercase"
+                    maxLength={6}
+                  />
+                  {showDropdown && filteredPNRs.length > 0 && (
+                    <div className="absolute z-50 w-full mt-1 bg-card border border-border rounded-md shadow-lg max-h-60 overflow-auto">
+                      {filteredPNRs.map((pnrOption) => (
+                        <button
+                          key={pnrOption}
+                          onClick={() => handlePNRSelect(pnrOption)}
+                          className="w-full px-4 py-2 text-left hover:bg-muted/50 transition-colors font-mono text-sm"
+                        >
+                          {pnrOption}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <Button onClick={() => handleSearch()} disabled={loading} className="gap-2">
                   <Search className="size-4" />
                   {loading ? 'Searching...' : 'Search'}
                 </Button>
