@@ -1,6 +1,7 @@
 import { db } from './db/client'
 import { QueuedAction } from './db/schema'
 import { apiClient } from './api-client'
+import { dynamoDBClient } from './dynamodb-client'
 
 export class SyncManager {
   private syncInterval: NodeJS.Timeout | null = null
@@ -51,10 +52,12 @@ export class SyncManager {
         // Mark as synced in local DB
         action.payload.synced = true
         await db.saveCheckIn(action.payload)
-        await db.updateQueueStatus(action.id, 'synced')
+        
+        // Remove from sync queue after successful sync
+        await db.deleteQueueItem(action.id)
         
         success++
-        console.log('[Skylytics] Synced:', action.payload.pnr_id)
+        console.log('[Skylytics] Synced and removed from queue:', action.payload.pnr_id)
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error'
         console.error('[Skylytics] Failed to sync:', action.payload.pnr_id, errorMessage)
@@ -73,7 +76,13 @@ export class SyncManager {
 
   private async sendToBackOffice(action: QueuedAction): Promise<void> {
     try {
-      await apiClient.syncCheckIn(action.payload)
+      // Try direct DynamoDB sync first (for offline-first architecture)
+      if (process.env.NEXT_PUBLIC_AWS_ACCESS_KEY_ID) {
+        await dynamoDBClient.syncCheckIn(action.payload)
+      } else {
+        // Fallback to API Gateway if credentials not available
+        await apiClient.syncCheckIn(action.payload)
+      }
     } catch (error) {
       throw error
     }

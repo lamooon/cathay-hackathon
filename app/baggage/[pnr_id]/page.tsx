@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Plane, ArrowLeft, Package, Trash2 } from 'lucide-react'
+import { Plane, ArrowLeft, Package, Trash2, CheckCircle2 } from 'lucide-react'
 import Link from 'next/link'
 
 // Flight number to color mapping
@@ -38,6 +38,7 @@ export default function BaggagePage() {
   const [isScanning, setIsScanning] = useState(false)
   const [scanProgress, setScanProgress] = useState(0)
   const [color, setColor] = useState('BLACK')
+  const [showNotification, setShowNotification] = useState(false)
 
   useEffect(() => {
     loadRecord()
@@ -105,15 +106,18 @@ export default function BaggagePage() {
     }, stepDuration)
   }
 
-  async function handleGenerateTag() {
+  async function handleScanOrConfirm() {
     if (!record) return
     
     const bagWeight = parseFloat(barcodeInput)
+    
+    // If no weight, trigger a scan
     if (!bagWeight || bagWeight <= 0) {
-      alert('Please scan baggage first')
+      startAutoScan()
       return
     }
 
+    // If we have weight, confirm and create tag
     const newBag: Baggage = {
       tagNumber: generateBaggageTagNumber(),
       weight: bagWeight,
@@ -128,18 +132,7 @@ export default function BaggagePage() {
     }
 
     try {
-      // Update DynamoDB via API
-      const response = await fetch('/api/baggage/update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedRecord),
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to update baggage')
-      }
-
-      // Also save to IndexedDB
+      // Save to local IndexedDB only
       await db.saveCheckIn(updatedRecord)
       
       // Add to sync queue
@@ -155,10 +148,19 @@ export default function BaggagePage() {
       // Update local state - this will live-update the UI
       setRecord(updatedRecord)
       setBarcodeInput('')
+      
+      // Ready for next scan
     } catch (err) {
       console.error('[Skylytics] Failed to add baggage:', err)
       alert('Failed to add baggage')
     }
+  }
+
+  function handleSendData() {
+    setShowNotification(true)
+    setTimeout(() => {
+      setShowNotification(false)
+    }, 3000)
   }
 
   async function handleRemoveBaggage(tagNumber: string) {
@@ -211,13 +213,13 @@ export default function BaggagePage() {
                 <ArrowLeft className="size-5" />
               </Button>
             </Link>
-            <div className="flex items-center gap-3">
+            <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
               <Package className="size-8 text-primary" />
               <div>
                 <h1 className="text-xl font-bold text-foreground">Baggage Tagging</h1>
                 <p className="text-xs text-muted-foreground">{record.passengerName}</p>
               </div>
-            </div>
+            </Link>
           </div>
           <OnlineStatusIndicator />
         </div>
@@ -300,12 +302,12 @@ export default function BaggagePage() {
                 </p>
               </div>
               <Button 
-                onClick={handleGenerateTag} 
-                disabled={!barcodeInput || isScanning}
+                onClick={handleScanOrConfirm} 
                 className="w-full gap-2"
+                disabled={isScanning}
               >
                 <Package className="size-4" />
-                Generate Baggage Tag
+                {barcodeInput && !isScanning ? 'Confirm Baggage' : 'Scan Baggage'}
               </Button>
             </CardContent>
           </Card>
@@ -355,9 +357,28 @@ export default function BaggagePage() {
             </CardContent>
           </Card>
 
-          <Link href="/check-in" className="block">
-            <Button className="w-full">Check-In Next Passenger</Button>
-          </Link>
+          <div className="flex gap-3">
+            <Button 
+              onClick={handleSendData}
+              variant="outline"
+              className="flex-1"
+            >
+              Send Data
+            </Button>
+            <Link href="/check-in" className="flex-1">
+              <Button className="w-full">Check-In Next Passenger</Button>
+            </Link>
+          </div>
+
+          {/* Notification */}
+          {showNotification && (
+            <div className="fixed bottom-4 right-4 rounded-lg border border-emerald-600 bg-emerald-50 dark:bg-emerald-950 p-4 shadow-lg animate-in slide-in-from-bottom-5">
+              <div className="flex items-center gap-2 text-emerald-900 dark:text-emerald-100">
+                <CheckCircle2 className="size-5 text-emerald-600" />
+                <p className="font-semibold">Data sent successfully!</p>
+              </div>
+            </div>
+          )}
         </div>
       </main>
     </div>
