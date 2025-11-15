@@ -1,0 +1,25 @@
+{
+  "pnr_id": { "S": "AB12CD-LEE/AMY" },
+  "pnr": { "S": "AB12CD" },
+  "flightNumber": { "S": "CX739" },
+  "date": { "S": "2025-10-24" },
+  "origin": { "S": "HKG" },
+  "destination": { "S": "SIN" },
+  "passengerName": { "S": "LEE/AMY" },
+  "seatNumber": { "S": "16C" },
+  "baggage": {
+    "L": [
+      {
+        "M": {
+          "tagNumber": { "S": "123456789" },
+          "weight": { "N": "18.2" },
+          "color": { "S": "RED" },
+          "status": { "S": "CHECKED" }
+        }
+      }
+    ]
+  },
+  "timestamp": { "S": "2025-10-24T10:14:55+08:00" },
+  "deskId": { "S": "HKG-F32" },
+  "synced": { "BOOL": false }
+}
