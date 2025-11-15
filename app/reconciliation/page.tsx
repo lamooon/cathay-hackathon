@@ -2,19 +2,24 @@
 
 import { useState, useEffect } from 'react'
 import { db } from '@/lib/db/client'
-import { QueuedAction } from '@/lib/db/schema'
+import { QueuedAction, CheckInRecord } from '@/lib/db/schema'
 import { syncManager } from '@/lib/sync-manager'
 import { OnlineStatusIndicator } from '@/components/online-status-indicator'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Plane, ArrowLeft, RefreshCw, Download, CheckCircle2, XCircle, Clock } from 'lucide-react'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { ArrowLeft, RefreshCw, CheckCircle2, XCircle, Clock, Edit, Upload, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 
 export default function ReconciliationPage() {
   const [queue, setQueue] = useState<QueuedAction[]>([])
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
+  const [editingItem, setEditingItem] = useState<QueuedAction | null>(null)
+  const [editForm, setEditForm] = useState<CheckInRecord | null>(null)
 
   useEffect(() => {
     loadQueue()
@@ -48,34 +53,67 @@ export default function ReconciliationPage() {
     }
   }
 
-  async function handleExportCSV() {
-    const pending = queue.filter(q => q.status === 'pending')
-    if (pending.length === 0) {
-      alert('No pending items to export')
-      return
+  function handleEditClick(item: QueuedAction) {
+    setEditingItem(item)
+    setEditForm({ ...item.payload })
+  }
+
+  async function handleSaveEdit() {
+    if (!editingItem || !editForm) return
+
+    try {
+      // Update the check-in record
+      await db.saveCheckIn(editForm)
+      
+      // Update the queue item payload
+      editingItem.payload = editForm
+      await db.addToQueue(editingItem)
+      
+      alert('Record updated successfully')
+      setEditingItem(null)
+      setEditForm(null)
+      await loadQueue()
+    } catch (err) {
+      console.error('[Skylytics] Failed to update record:', err)
+      alert('Failed to update record')
     }
+  }
 
-    const headers = ['PNR', 'Passenger', 'Flight', 'Destination', 'Baggage Count', 'Timestamp']
-    const rows = pending.map(item => {
-      const p = item.payload
-      return [
-        p.pnr,
-        p.passengerName,
-        p.flightNumber,
-        p.destination,
-        p.baggage.length.toString(),
-        new Date(item.timestamp).toISOString(),
-      ]
+  async function handleClearSynced() {
+    try {
+      const syncedItems = queue.filter(q => q.status === 'synced')
+      if (syncedItems.length === 0) {
+        alert('No synced items to clear')
+        return
+      }
+
+      if (!confirm(`Remove ${syncedItems.length} synced items from queue?`)) {
+        return
+      }
+
+      for (const item of syncedItems) {
+        await db.deleteQueueItem(item.id)
+      }
+
+      alert(`Cleared ${syncedItems.length} synced items`)
+      await loadQueue()
+    } catch (err) {
+      console.error('[Skylytics] Failed to clear synced items:', err)
+      alert('Failed to clear synced items')
+    }
+  }
+
+  function formatDateTime(timestamp: number): string {
+    const date = new Date(timestamp)
+    return date.toLocaleString('en-US', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
     })
-
-    const csv = [headers, ...rows].map(row => row.join(',')).join('\n')
-    const blob = new Blob([csv], { type: 'text/csv' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `skylytics-pending-${Date.now()}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
   }
 
   const pendingCount = queue.filter(q => q.status === 'pending').length
@@ -100,13 +138,13 @@ export default function ReconciliationPage() {
                 <ArrowLeft className="size-5" />
               </Button>
             </Link>
-            <div className="flex items-center gap-3">
-              <Plane className="size-8 text-primary" />
+            <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+              <img src="/logo.png" alt="Skylytics" className="size-8" />
               <div>
                 <h1 className="text-xl font-bold text-foreground">Reconciliation</h1>
                 <p className="text-xs text-muted-foreground">Sync Queue Management</p>
               </div>
-            </div>
+            </Link>
           </div>
           <OnlineStatusIndicator />
         </div>
@@ -160,21 +198,23 @@ export default function ReconciliationPage() {
           <Card>
             <CardHeader>
               <CardTitle>Actions</CardTitle>
-              <CardDescription>Manage sync queue and export data</CardDescription>
+              <CardDescription>Sync offline data to cloud</CardDescription>
             </CardHeader>
             <CardContent className="flex gap-3">
               <Button onClick={handleManualSync} disabled={syncing} className="gap-2">
-                <RefreshCw className={`size-4 ${syncing ? 'animate-spin' : ''}`} />
-                {syncing ? 'Syncing...' : 'Manual Sync'}
-              </Button>
-              <Button variant="outline" onClick={handleExportCSV} className="gap-2">
-                <Download className="size-4" />
-                Export CSV
+                <Upload className={`size-4 ${syncing ? 'animate-spin' : ''}`} />
+                {syncing ? 'Syncing to Cloud...' : 'Sync to Cloud'}
               </Button>
               <Button variant="outline" onClick={loadQueue} className="gap-2">
                 <RefreshCw className="size-4" />
                 Refresh
               </Button>
+              {syncedCount > 0 && (
+                <Button variant="outline" onClick={handleClearSynced} className="gap-2 text-muted-foreground">
+                  <Trash2 className="size-4" />
+                  Clear Synced ({syncedCount})
+                </Button>
+              )}
             </CardContent>
           </Card>
 
@@ -215,7 +255,7 @@ export default function ReconciliationPage() {
                           <span>PNR: <span className="font-mono font-semibold text-foreground">{item.payload.pnr}</span></span>
                           <span>Flight: <span className="font-semibold text-foreground">{item.payload.flightNumber}</span></span>
                           <span>Bags: <span className="font-semibold text-foreground">{item.payload.baggage.length}</span></span>
-                          <span>Time: <span className="font-semibold text-foreground">{new Date(item.timestamp).toLocaleString()}</span></span>
+                          <span>Time: <span className="font-semibold text-foreground">{formatDateTime(item.timestamp)}</span></span>
                           {item.retryCount > 0 && (
                             <span>Retries: <span className="font-semibold text-foreground">{item.retryCount}</span></span>
                           )}
@@ -224,6 +264,14 @@ export default function ReconciliationPage() {
                           <p className="text-sm text-destructive">{item.errorMessage}</p>
                         )}
                       </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleEditClick(item)}
+                        className="ml-4"
+                      >
+                        <Edit className="size-4" />
+                      </Button>
                     </div>
                   ))}
                 </div>
@@ -232,6 +280,129 @@ export default function ReconciliationPage() {
           </Card>
         </div>
       </main>
+
+      {/* Edit Dialog */}
+      <Dialog open={!!editingItem} onOpenChange={(open) => !open && setEditingItem(null)}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Check-In Record</DialogTitle>
+            <DialogDescription>
+              Update passenger and flight information
+            </DialogDescription>
+          </DialogHeader>
+          
+          {editForm && (
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="passengerName">Passenger Name</Label>
+                  <Input
+                    id="passengerName"
+                    value={editForm.passengerName}
+                    onChange={(e) => setEditForm({ ...editForm, passengerName: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="pnr">PNR</Label>
+                  <Input
+                    id="pnr"
+                    value={editForm.pnr}
+                    onChange={(e) => setEditForm({ ...editForm, pnr: e.target.value })}
+                    className="font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="flightNumber">Flight Number</Label>
+                  <Input
+                    id="flightNumber"
+                    value={editForm.flightNumber}
+                    onChange={(e) => setEditForm({ ...editForm, flightNumber: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="seatNumber">Seat Number</Label>
+                  <Input
+                    id="seatNumber"
+                    value={editForm.seatNumber}
+                    onChange={(e) => setEditForm({ ...editForm, seatNumber: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="origin">Origin</Label>
+                  <Input
+                    id="origin"
+                    value={editForm.origin}
+                    onChange={(e) => setEditForm({ ...editForm, origin: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="destination">Destination</Label>
+                  <Input
+                    id="destination"
+                    value={editForm.destination}
+                    onChange={(e) => setEditForm({ ...editForm, destination: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="date">Date</Label>
+                  <Input
+                    id="date"
+                    type="date"
+                    value={editForm.date}
+                    onChange={(e) => setEditForm({ ...editForm, date: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="deskId">Desk ID</Label>
+                <Input
+                  id="deskId"
+                  value={editForm.deskId}
+                  onChange={(e) => setEditForm({ ...editForm, deskId: e.target.value })}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Baggage ({editForm.baggage.length} items)</Label>
+                <div className="rounded-md border border-border p-3 space-y-2">
+                  {editForm.baggage.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No baggage items</p>
+                  ) : (
+                    editForm.baggage.map((bag, index) => (
+                      <div key={index} className="flex items-center gap-2 text-sm">
+                        <Badge variant="outline">{bag.tagNumber}</Badge>
+                        <span>{bag.weight}kg</span>
+                        <span className="text-muted-foreground">•</span>
+                        <span>{bag.color}</span>
+                        <span className="text-muted-foreground">•</span>
+                        <Badge variant={bag.status === 'CHECKED' ? 'default' : 'secondary'}>
+                          {bag.status}
+                        </Badge>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingItem(null)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveEdit}>
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

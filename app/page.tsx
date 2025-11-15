@@ -1,128 +1,291 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { db } from '@/lib/db/client'
-import { seedDatabase } from '@/lib/mock-data'
 import { OnlineStatusIndicator } from '@/components/online-status-indicator'
 import { Button } from '@/components/ui/button'
-import { Plane } from 'lucide-react'
+import { Plane, CheckCircle2, Upload } from 'lucide-react'
 import Link from 'next/link'
+
+function parseCSV(csvText: string) {
+  const lines = csvText.trim().split('\n')
+  const headers = lines[0].split(',').map(h => h.replace(/"/g, '').trim())
+  
+  const records = []
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i]
+    if (!line.trim()) continue
+    
+    // Simple CSV parsing (handles quoted fields)
+    const values: string[] = []
+    let current = ''
+    let inQuotes = false
+    
+    for (let j = 0; j < line.length; j++) {
+      const char = line[j]
+      if (char === '"') {
+        inQuotes = !inQuotes
+      } else if (char === ',' && !inQuotes) {
+        values.push(current.trim())
+        current = ''
+      } else {
+        current += char
+      }
+    }
+    values.push(current.trim())
+    
+    const record: any = {}
+    headers.forEach((header, index) => {
+      let value = values[index] || ''
+      
+      // Parse special fields
+      if (header === 'baggage') {
+        try {
+          // Handle empty array or parse JSON
+          record[header] = value === '[]' ? [] : JSON.parse(value)
+        } catch {
+          record[header] = []
+        }
+      } else if (header === 'checkedIn' || header === 'synced') {
+        record[header] = value === 'true'
+      } else {
+        record[header] = value
+      }
+    })
+    
+    records.push(record)
+  }
+  
+  return records
+}
 
 export default function HomePage() {
   const [dbReady, setDbReady] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [recordCount, setRecordCount] = useState(0)
+  const [isDragging, setIsDragging] = useState(false)
+  const [showNotification, setShowNotification] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     async function initDB() {
       try {
         await db.init()
-        await seedDatabase(db)
+        const existingRecords = await db.getAllCheckIns()
+        setRecordCount(existingRecords.length)
         setDbReady(true)
-        console.log('[v0] Database initialized and seeded')
+        console.log('[Skylytics] Database initialized with', existingRecords.length, 'records')
       } catch (error) {
-        console.error('[v0] Failed to initialize database:', error)
+        console.error('[Skylytics] Failed to initialize database:', error)
       }
     }
     initDB()
   }, [])
 
+  async function handleFileUpload(file: File) {
+    setLoading(true)
+    try {
+      const text = await file.text()
+      const records = parseCSV(text)
+      
+      console.log('[Skylytics] Parsed', records.length, 'records from CSV')
+      
+      for (const record of records) {
+        await db.saveCheckIn(record)
+      }
+      
+      const allRecords = await db.getAllCheckIns()
+      setRecordCount(allRecords.length)
+      console.log('[Skylytics] Loaded', records.length, 'records into database')
+      
+      // Show notification
+      setShowNotification(true)
+      setTimeout(() => setShowNotification(false), 3000)
+    } catch (err) {
+      console.error('Failed to load CSV:', err)
+      alert('Failed to load CSV file: ' + (err as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault()
+    setIsDragging(false)
+    
+    const file = e.dataTransfer.files[0]
+    if (file && file.name.endsWith('.csv')) {
+      handleFileUpload(file)
+    } else {
+      alert('Please drop a CSV file')
+    }
+  }
+
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault()
+    setIsDragging(true)
+  }
+
+  function handleDragLeave(e: React.DragEvent) {
+    e.preventDefault()
+    setIsDragging(false)
+  }
+
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (file) {
+      console.log('[Skylytics] File selected:', file.name, file.type)
+      handleFileUpload(file)
+      // Reset input so same file can be selected again
+      e.target.value = ''
+    }
+  }
+
+  async function handleClearDatabase() {
+    if (!confirm('Are you sure you want to clear all passenger data? This cannot be undone.')) {
+      return
+    }
+    
+    try {
+      // Clear IndexedDB by deleting and recreating
+      indexedDB.deleteDatabase('skylytics-db')
+      
+      // Reinitialize
+      await db.init()
+      const existingRecords = await db.getAllCheckIns()
+      setRecordCount(existingRecords.length)
+      
+      console.log('[Skylytics] Database cleared')
+    } catch (err) {
+      console.error('Failed to clear database:', err)
+      alert('Failed to clear database')
+    }
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-card">
         <div className="container mx-auto flex items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-3">
-            <Plane className="size-8 text-primary" />
+          <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+            <img src="/logo.png" alt="Skylytics" className="size-8" />
             <div>
               <h1 className="text-xl font-bold text-foreground">Skylytics</h1>
               <p className="text-xs text-muted-foreground">Contingency Operations</p>
             </div>
+          </Link>
+          <div className="flex items-center gap-3">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv"
+              onChange={handleFileSelect}
+              className="hidden"
+            />
+            {dbReady && recordCount > 0 && (
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={loading}
+                className="gap-2"
+              >
+                <Upload className="size-4" />
+                Import CSV
+              </Button>
+            )}
+            <OnlineStatusIndicator />
           </div>
-          <OnlineStatusIndicator />
         </div>
       </header>
 
       <main className="container mx-auto px-6 py-12">
         <div className="mx-auto max-w-4xl space-y-8">
-          <div className="space-y-3 text-center">
-            <h2 className="text-balance text-4xl font-bold tracking-tight text-foreground">
-              Offline Check-In System
-            </h2>
-            <p className="text-pretty text-lg text-muted-foreground leading-relaxed">
-              Reliable airline operations during system outages. Check in passengers, tag baggage, and sync when connectivity returns.
-            </p>
-          </div>
-
           {!dbReady ? (
             <div className="flex items-center justify-center rounded-lg border border-border bg-card p-12">
               <div className="space-y-3 text-center">
                 <div className="mx-auto size-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-                <p className="text-sm text-muted-foreground">Initializing offline database...</p>
+                <p className="text-sm text-muted-foreground">Initializing database...</p>
               </div>
             </div>
           ) : (
-            <div className="grid gap-4 md:grid-cols-2">
-              <Link href="/check-in" className="group">
-                <div className="flex h-full flex-col gap-4 rounded-lg border border-border bg-card p-6 transition-all hover:border-primary hover:shadow-lg">
-                  <div className="flex size-12 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                    <Plane className="size-6" />
+            <>
+              {recordCount === 0 && (
+                <div 
+                  className={`rounded-lg border-2 border-dashed transition-colors cursor-pointer ${
+                    isDragging 
+                      ? 'border-primary bg-primary/5' 
+                      : 'border-border bg-card hover:border-primary/50'
+                  } p-8`}
+                  onDrop={handleDrop}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <div className="space-y-4 text-center">
+                    <Upload className={`mx-auto size-12 ${isDragging ? 'text-primary' : 'text-muted-foreground'}`} />
+                    <div className="space-y-2">
+                      <h3 className="text-lg font-semibold">Load Passenger Data</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Drag and drop a CSV file or click to browse
+                      </p>
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <h3 className="text-lg font-semibold text-foreground">Passenger Check-In</h3>
-                    <p className="text-sm text-muted-foreground leading-relaxed">
-                      Look up PNRs and check in passengers with full offline support
-                    </p>
-                  </div>
-                  <Button className="mt-auto">Open Check-In</Button>
                 </div>
-              </Link>
+              )}
 
-              <Link href="/reconciliation" className="group">
-                <div className="flex h-full flex-col gap-4 rounded-lg border border-border bg-card p-6 transition-all hover:border-primary hover:shadow-lg">
-                  <div className="flex size-12 items-center justify-center rounded-lg bg-accent/10 text-accent">
-                    <svg
-                      className="size-6"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      viewBox="0 0 24 24"
-                    >
-                      <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
+              <div className="grid gap-4 md:grid-cols-2">
+                <Link href="/check-in" className="group">
+                  <div className="flex h-full flex-col gap-4 rounded-lg border border-border bg-card p-6 transition-all hover:border-primary hover:shadow-lg">
+                    <div className="flex size-12 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                      <Plane className="size-6" />
+                    </div>
+                    <div className="space-y-2">
+                      <h3 className="text-lg font-semibold text-foreground">Passenger Check-In</h3>
+                      <p className="text-sm text-muted-foreground leading-relaxed">
+                        Look up PNRs and check in passengers
+                      </p>
+                    </div>
+                    <Button className="mt-auto">Open Check-In</Button>
                   </div>
-                  <div className="space-y-2">
-                    <h3 className="text-lg font-semibold text-foreground">Reconciliation</h3>
-                    <p className="text-sm text-muted-foreground leading-relaxed">
-                      Review and sync offline operations with back office systems
-                    </p>
+                </Link>
+
+                <Link href="/reconciliation" className="group">
+                  <div className="flex h-full flex-col gap-4 rounded-lg border border-border bg-card p-6 transition-all hover:border-primary hover:shadow-lg">
+                    <div className="flex size-12 items-center justify-center rounded-lg bg-accent/10 text-accent">
+                      <svg
+                        className="size-6"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        viewBox="0 0 24 24"
+                      >
+                        <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </div>
+                    <div className="space-y-2">
+                      <h3 className="text-lg font-semibold text-foreground">Reconciliation</h3>
+                      <p className="text-sm text-muted-foreground leading-relaxed">
+                        Review and sync offline operations
+                      </p>
+                    </div>
+                    <Button variant="secondary" className="mt-auto">View Queue</Button>
                   </div>
-                  <Button variant="secondary" className="mt-auto">View Queue</Button>
-                </div>
-              </Link>
-            </div>
+                </Link>
+              </div>
+            </>
           )}
-
-          <div className="rounded-lg border border-border bg-muted/30 p-6">
-            <h3 className="mb-4 font-semibold text-foreground">System Features</h3>
-            <ul className="grid gap-3 text-sm text-muted-foreground md:grid-cols-2">
-              <li className="flex items-start gap-2">
-                <span className="mt-0.5 text-primary">•</span>
-                <span>Full offline PNR lookup and passenger data</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="mt-0.5 text-primary">•</span>
-                <span>Automated baggage tag generation</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="mt-0.5 text-primary">•</span>
-                <span>Local IndexedDB queue management</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="mt-0.5 text-primary">•</span>
-                <span>CSV export for manual reconciliation</span>
-              </li>
-            </ul>
-          </div>
         </div>
       </main>
+
+      {/* Notification */}
+      {showNotification && (
+        <div className="fixed bottom-4 right-4 rounded-lg border border-emerald-600 bg-emerald-50 dark:bg-emerald-950 p-4 shadow-lg animate-in slide-in-from-bottom-5">
+          <div className="flex items-center gap-2 text-emerald-900 dark:text-emerald-100">
+            <CheckCircle2 className="size-5 text-emerald-600" />
+            <p className="font-semibold">{recordCount} passenger records loaded</p>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

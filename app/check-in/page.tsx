@@ -34,37 +34,31 @@ export default function CheckInPage() {
     setSelectedPassenger(null)
 
     try {
-      // Fetch from DynamoDB via API
-      const response = await fetch(`/api/check-in?pnr=${pnr.toUpperCase()}`)
-      const result = await response.json()
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to fetch')
-      }
-
-      if (result.data.length === 0) {
-        setError('No passengers found for this PNR')
+      // Use local IndexedDB only
+      console.log('Searching for PNR:', pnr.toUpperCase())
+      const results = await db.getCheckInByPNR(pnr.toUpperCase())
+      console.log('Search results:', results)
+      
+      if (results.length === 0) {
+        setError(`No passengers found for PNR: ${pnr}`)
       } else {
-        setPassengers(result.data)
-        // Also save to IndexedDB for offline access
-        for (const passenger of result.data) {
+        // Mark as checked in
+        const updatedResults = results.map(p => ({
+          ...p,
+          checkedIn: true,
+          timestamp: new Date().toISOString()
+        }))
+        
+        // Save updated records
+        for (const passenger of updatedResults) {
           await db.saveCheckIn(passenger)
         }
+        
+        setPassengers(updatedResults)
       }
-    } catch (err: any) {
-      // Fallback to IndexedDB if API fails
-      try {
-        const results = await db.getCheckInByPNR(pnr.toUpperCase())
-        if (results.length === 0) {
-          setError('No passengers found for this PNR (offline mode)')
-        } else {
-          setPassengers(results)
-          setError('Showing cached data (offline mode)')
-        }
-      } catch (dbErr) {
-        setError('Failed to search. Please try again.')
-        console.error('[Skylytics] Search error:', err)
-      }
+    } catch (err) {
+      setError('Failed to search. Please try again.')
+      console.error('[Skylytics] Search error:', err)
     } finally {
       setLoading(false)
     }
@@ -109,13 +103,13 @@ export default function CheckInPage() {
                 <ArrowLeft className="size-5" />
               </Button>
             </Link>
-            <div className="flex items-center gap-3">
-              <Plane className="size-8 text-primary" />
+            <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+              <img src="/logo.png" alt="Skylytics" className="size-8" />
               <div>
                 <h1 className="text-xl font-bold text-foreground">Passenger Check-In</h1>
                 <p className="text-xs text-muted-foreground">PNR Lookup System</p>
               </div>
-            </div>
+            </Link>
           </div>
           <OnlineStatusIndicator />
         </div>
