@@ -4,3 +4,14 @@ node_modules
 .vscode
 
 .env.local
+
+# DynamoDB setup and test files
+setup-dynamodb-table.js
+test-dynamodb.js
+
+# AWS test files
+aws-test*.js
+
+# Sample input data
+sample_input/
+sample_data.csv

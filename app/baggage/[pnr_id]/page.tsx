@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { db } from '@/lib/db/client'
 import { CheckInRecord, Baggage } from '@/lib/db/schema'
 import { generateBaggageTagNumber } from '@/lib/mock-data'
-import { OnlineStatusIndicator } from '@/components/online-status-indicator'
+
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -221,7 +221,6 @@ export default function BaggagePage() {
               </div>
             </Link>
           </div>
-          <OnlineStatusIndicator />
         </div>
       </header>
 
