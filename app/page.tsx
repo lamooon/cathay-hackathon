@@ -67,7 +67,7 @@ export default function HomePage() {
   const [loading, setLoading] = useState(false)
   const [recordCount, setRecordCount] = useState(0)
   const [isDragging, setIsDragging] = useState(false)
-  const [showNotification, setShowNotification] = useState(false)
+  const [showLoadedMessage, setShowLoadedMessage] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -101,9 +101,9 @@ export default function HomePage() {
       setRecordCount(allRecords.length)
       console.log('[Skylytics] Loaded', records.length, 'records into database')
       
-      // Show notification
-      setShowNotification(true)
-      setTimeout(() => setShowNotification(false), 3000)
+      // Show message temporarily
+      setShowLoadedMessage(true)
+      setTimeout(() => setShowLoadedMessage(false), 5000)
     } catch (err) {
       console.error('Failed to load CSV:', err)
       alert('Failed to load CSV file: ' + (err as Error).message)
@@ -211,7 +211,7 @@ export default function HomePage() {
             </div>
           ) : (
             <>
-              {recordCount === 0 && (
+              {recordCount === 0 ? (
                 <div 
                   className={`rounded-lg border-2 border-dashed transition-colors cursor-pointer ${
                     isDragging 
@@ -233,7 +233,16 @@ export default function HomePage() {
                     </div>
                   </div>
                 </div>
-              )}
+              ) : showLoadedMessage ? (
+                <div className="rounded-lg border border-border bg-card p-6 text-center">
+                  <div className="flex items-center justify-center gap-3">
+                    <CheckCircle2 className="size-6 text-emerald-600" />
+                    <p className="text-2xl font-semibold text-foreground">
+                      {recordCount} passenger {recordCount === 1 ? 'record' : 'records'} loaded
+                    </p>
+                  </div>
+                </div>
+              ) : null}
 
               <div className="grid gap-4 md:grid-cols-2">
                 <Link href="/check-in" className="group">
@@ -279,15 +288,6 @@ export default function HomePage() {
         </div>
       </main>
 
-      {/* Notification */}
-      {showNotification && (
-        <div className="fixed bottom-4 right-4 rounded-lg border border-emerald-600 bg-emerald-50 dark:bg-emerald-950 p-4 shadow-lg animate-in slide-in-from-bottom-5">
-          <div className="flex items-center gap-2 text-emerald-900 dark:text-emerald-100">
-            <CheckCircle2 className="size-5 text-emerald-600" />
-            <p className="font-semibold">{recordCount} passenger records loaded</p>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
