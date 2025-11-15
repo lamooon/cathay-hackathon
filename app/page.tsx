@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react'
 import { db } from '@/lib/db/client'
-import { OnlineStatusIndicator } from '@/components/online-status-indicator'
+
 import { Button } from '@/components/ui/button'
 import { Plane, CheckCircle2, Upload } from 'lucide-react'
 import Link from 'next/link'
@@ -193,7 +193,6 @@ export default function HomePage() {
                 Import CSV
               </Button>
             )}
-            <OnlineStatusIndicator />
           </div>
         </div>
       </header>

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { db } from '@/lib/db/client'
 import { CheckInRecord } from '@/lib/db/schema'
-import { OnlineStatusIndicator } from '@/components/online-status-indicator'
+
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -111,7 +111,6 @@ export default function CheckInPage() {
               </div>
             </Link>
           </div>
-          <OnlineStatusIndicator />
         </div>
       </header>
 
