@@ -14,6 +14,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Plane, ArrowLeft, Package, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 
+// Flight number to color mapping
+const FLIGHT_COLORS: Record<string, string> = {}
+
+function getColorForFlight(flightNumber: string): string {
+  // Generate consistent color based on flight number
+  if (!FLIGHT_COLORS[flightNumber]) {
+    const colors = ['BLACK', 'RED', 'BLUE', 'SILVER', 'BROWN']
+    const hash = flightNumber.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
+    FLIGHT_COLORS[flightNumber] = colors[hash % colors.length]
+  }
+  return FLIGHT_COLORS[flightNumber]
+}
+
 export default function BaggagePage() {
   const params = useParams()
   const router = useRouter()
@@ -21,12 +34,34 @@ export default function BaggagePage() {
 
   const [record, setRecord] = useState<CheckInRecord | null>(null)
   const [loading, setLoading] = useState(true)
-  const [weight, setWeight] = useState('')
+  const [barcodeInput, setBarcodeInput] = useState('')
+  const [isScanning, setIsScanning] = useState(false)
+  const [scanProgress, setScanProgress] = useState(0)
   const [color, setColor] = useState('BLACK')
 
   useEffect(() => {
     loadRecord()
   }, [pnr_id])
+
+  useEffect(() => {
+    // Set color based on flight number when record loads
+    if (record) {
+      const flightColor = getColorForFlight(record.flightNumber)
+      setColor(flightColor)
+    }
+  }, [record])
+
+  // Auto-scan simulation - only once when page loads
+  useEffect(() => {
+    if (record && !isScanning && !barcodeInput && record.baggage.length === 0) {
+      // Auto-start scanning after 2-3 seconds
+      const delay = 2000 + Math.random() * 1000
+      const timer = setTimeout(() => {
+        startAutoScan()
+      }, delay)
+      return () => clearTimeout(timer)
+    }
+  }, [record])
 
   async function loadRecord() {
     try {
@@ -45,16 +80,43 @@ export default function BaggagePage() {
     }
   }
 
-  async function handleAddBaggage() {
+  function startAutoScan() {
+    setIsScanning(true)
+    setScanProgress(0)
+    
+    // Animate progress bar (0.5-1s)
+    const duration = 500 + Math.random() * 500
+    const steps = 20
+    const stepDuration = duration / steps
+    
+    let currentStep = 0
+    const interval = setInterval(() => {
+      currentStep++
+      setScanProgress((currentStep / steps) * 100)
+      
+      if (currentStep >= steps) {
+        clearInterval(interval)
+        // Generate random weight between 10-30 kg
+        const weight = parseFloat((Math.random() * 20 + 10).toFixed(1))
+        setBarcodeInput(weight.toString())
+        setIsScanning(false)
+        setScanProgress(0)
+      }
+    }, stepDuration)
+  }
+
+  async function handleGenerateTag() {
     if (!record) return
-    if (!weight || parseFloat(weight) <= 0) {
-      alert('Please enter a valid weight')
+    
+    const bagWeight = parseFloat(barcodeInput)
+    if (!bagWeight || bagWeight <= 0) {
+      alert('Please scan baggage first')
       return
     }
 
     const newBag: Baggage = {
       tagNumber: generateBaggageTagNumber(),
-      weight: parseFloat(weight),
+      weight: bagWeight,
       color,
       status: 'CHECKED',
     }
@@ -66,6 +128,18 @@ export default function BaggagePage() {
     }
 
     try {
+      // Update DynamoDB via API
+      const response = await fetch('/api/baggage/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedRecord),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to update baggage')
+      }
+
+      // Also save to IndexedDB
       await db.saveCheckIn(updatedRecord)
       
       // Add to sync queue
@@ -78,9 +152,9 @@ export default function BaggagePage() {
         retryCount: 0,
       })
 
+      // Update local state - this will live-update the UI
       setRecord(updatedRecord)
-      setWeight('')
-      setColor('BLACK')
+      setBarcodeInput('')
     } catch (err) {
       console.error('[Skylytics] Failed to add baggage:', err)
       alert('Failed to add baggage')
@@ -186,42 +260,50 @@ export default function BaggagePage() {
             </CardContent>
           </Card>
 
-          {/* Add Baggage */}
+          {/* Barcode Scanner Simulation */}
           <Card>
             <CardHeader>
-              <CardTitle>Add Baggage</CardTitle>
-              <CardDescription>Enter baggage details to generate a tag</CardDescription>
+              <CardTitle>Baggage Scanner</CardTitle>
+              <CardDescription>Automatic baggage weight detection</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Weight (kg)</label>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Scanned Weight (kg)</label>
+                <div className="relative">
                   <Input
                     type="number"
                     step="0.1"
-                    placeholder="e.g., 18.5"
-                    value={weight}
-                    onChange={(e) => setWeight(e.target.value)}
+                    placeholder="Waiting for scan..."
+                    value={barcodeInput}
+                    onChange={(e) => setBarcodeInput(e.target.value)}
+                    className="flex-1 text-lg font-mono"
+                    disabled={isScanning}
                   />
+                  {isScanning && (
+                    <div className="absolute bottom-0 left-0 h-1 bg-primary transition-all duration-100" 
+                         style={{ width: `${scanProgress}%` }} />
+                  )}
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Color</label>
-                  <Select value={color} onValueChange={setColor}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="BLACK">Black</SelectItem>
-                      <SelectItem value="RED">Red</SelectItem>
-                      <SelectItem value="BLUE">Blue</SelectItem>
-                      <SelectItem value="SILVER">Silver</SelectItem>
-                      <SelectItem value="BROWN">Brown</SelectItem>
-                      <SelectItem value="OTHER">Other</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                {isScanning && (
+                  <p className="text-sm text-muted-foreground animate-pulse">Scanning baggage...</p>
+                )}
               </div>
-              <Button onClick={handleAddBaggage} className="w-full gap-2">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Baggage Color (Auto-assigned)</label>
+                <Input
+                  value={color}
+                  disabled
+                  className="font-semibold"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Color assigned based on flight {record.flightNumber}
+                </p>
+              </div>
+              <Button 
+                onClick={handleGenerateTag} 
+                disabled={!barcodeInput || isScanning}
+                className="w-full gap-2"
+              >
                 <Package className="size-4" />
                 Generate Baggage Tag
               </Button>
@@ -231,7 +313,7 @@ export default function BaggagePage() {
           {/* Baggage List */}
           <Card>
             <CardHeader>
-              <CardTitle>Checked Baggage ({record.baggage.length})</CardTitle>
+              <CardTitle>Checked Baggage</CardTitle>
               <CardDescription>
                 Total Weight: {record.baggage.reduce((sum, b) => sum + b.weight, 0).toFixed(1)} kg
               </CardDescription>
@@ -243,10 +325,11 @@ export default function BaggagePage() {
                 </p>
               ) : (
                 <div className="space-y-3">
-                  {record.baggage.map((bag) => (
+                  {record.baggage.map((bag, index) => (
                     <div
                       key={bag.tagNumber}
-                      className="flex items-center justify-between rounded-lg border border-border bg-muted/30 p-4"
+                      className="flex items-center justify-between rounded-lg border border-border bg-muted/30 p-4 animate-in fade-in slide-in-from-top-2 duration-300"
+                      style={{ animationDelay: `${index * 100}ms` }}
                     >
                       <div className="flex-1 space-y-1">
                         <div className="flex items-center gap-3">
@@ -272,14 +355,9 @@ export default function BaggagePage() {
             </CardContent>
           </Card>
 
-          <div className="flex gap-3">
-            <Link href="/check-in" className="flex-1">
-              <Button variant="outline" className="w-full">Back to Check-In</Button>
-            </Link>
-            <Link href="/reconciliation" className="flex-1">
-              <Button className="w-full">View Sync Queue</Button>
-            </Link>
-          </div>
+          <Link href="/check-in" className="block">
+            <Button className="w-full">Check-In Next Passenger</Button>
+          </Link>
         </div>
       </main>
     </div>

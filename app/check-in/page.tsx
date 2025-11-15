@@ -34,15 +34,37 @@ export default function CheckInPage() {
     setSelectedPassenger(null)
 
     try {
-      const results = await db.getCheckInByPNR(pnr.toUpperCase())
-      if (results.length === 0) {
+      // Fetch from DynamoDB via API
+      const response = await fetch(`/api/check-in?pnr=${pnr.toUpperCase()}`)
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to fetch')
+      }
+
+      if (result.data.length === 0) {
         setError('No passengers found for this PNR')
       } else {
-        setPassengers(results)
+        setPassengers(result.data)
+        // Also save to IndexedDB for offline access
+        for (const passenger of result.data) {
+          await db.saveCheckIn(passenger)
+        }
       }
-    } catch (err) {
-      setError('Failed to search. Please try again.')
-      console.error('[Skylytics] Search error:', err)
+    } catch (err: any) {
+      // Fallback to IndexedDB if API fails
+      try {
+        const results = await db.getCheckInByPNR(pnr.toUpperCase())
+        if (results.length === 0) {
+          setError('No passengers found for this PNR (offline mode)')
+        } else {
+          setPassengers(results)
+          setError('Showing cached data (offline mode)')
+        }
+      } catch (dbErr) {
+        setError('Failed to search. Please try again.')
+        console.error('[Skylytics] Search error:', err)
+      }
     } finally {
       setLoading(false)
     }
@@ -224,41 +246,13 @@ export default function CheckInPage() {
                   </div>
                 </div>
                 <Link href={`/baggage/${selectedPassenger.pnr_id}`}>
-                  <Button className="w-full">Proceed to Baggage Tagging</Button>
+                  <Button className="w-full">Confirm Check-In</Button>
                 </Link>
               </CardContent>
             </Card>
           )}
 
-          {/* Quick PNR Examples */}
-          {passengers.length === 0 && !error && (
-            <Card className="bg-muted/30">
-              <CardHeader>
-                <CardTitle className="text-base">Demo PNRs</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-wrap gap-2">
-                  {['ABC123', 'DEF456', 'GHI789', 'JKL012'].map((demoPnr) => (
-                    <Button
-                      key={demoPnr}
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setPnr(demoPnr)
-                        setTimeout(() => {
-                          setPnr(demoPnr)
-                          handleSearch()
-                        }, 100)
-                      }}
-                      className="font-mono"
-                    >
-                      {demoPnr}
-                    </Button>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
+
         </div>
       </main>
     </div>

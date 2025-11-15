@@ -6,10 +6,15 @@
     "build": "next build",
     "dev": "next dev",
     "lint": "eslint .",
-    "start": "next start"
+    "start": "next start",
+    "setup:dynamodb": "node setup-dynamodb-table.js",
+    "test:dynamodb": "node test-dynamodb.js"
   },
   "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.709.0",
+    "@aws-sdk/lib-dynamodb": "^3.709.0",
     "@hookform/resolvers": "^3.10.0",
+    "dotenv": "^16.4.7",
     "@radix-ui/react-accordion": "1.2.2",
     "@radix-ui/react-alert-dialog": "1.1.4",
     "@radix-ui/react-aspect-ratio": "1.1.1",
