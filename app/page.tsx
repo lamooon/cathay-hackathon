@@ -46,8 +46,11 @@ function parseCSV(csvText: string) {
         } catch {
           record[header] = []
         }
-      } else if (header === 'checkedIn' || header === 'synced') {
+      } else if (header === 'checkedIn') {
         record[header] = value === 'true'
+      } else if (header === 'synced') {
+        // Always import as not synced - synced status is only set after actual sync
+        record[header] = false
       } else {
         record[header] = value
       }

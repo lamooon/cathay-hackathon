@@ -37,8 +37,8 @@ export default function ReconciliationPage() {
 
       // Get all check-in records to calculate stats
       const allRecords = await db.getAllCheckIns()
-      const synced = allRecords.filter(r => r.synced).length
-      const notSynced = allRecords.filter(r => !r.synced).length
+      const synced = allRecords.filter(r => r.synced && r.checkedIn).length
+      const notSynced = allRecords.filter(r => !r.synced && r.checkedIn).length
 
       setSyncedCount(synced)
       setNotSyncedCount(notSynced)
