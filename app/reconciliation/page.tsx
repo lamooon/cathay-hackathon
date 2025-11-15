@@ -240,14 +240,14 @@ export default function ReconciliationPage() {
                   Clear Synced Queue ({queueSyncedCount})
                 </Button>
               )}
-              <Button
+              {/* <Button
                 variant="destructive"
                 onClick={handleResetDatabase}
                 className="gap-2 ml-auto"
               >
                 <AlertTriangle className="size-4" />
                 Reset Database
-              </Button>
+              </Button> */}
             </CardContent>
           </Card>
 

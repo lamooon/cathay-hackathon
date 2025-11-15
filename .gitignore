@@ -15,3 +15,8 @@ aws-test*.js
 # Sample input data
 sample_input/
 sample_data.csv
+
+*.md
+
+delete-dynamodb-table.js
+test-aws-connection.js
