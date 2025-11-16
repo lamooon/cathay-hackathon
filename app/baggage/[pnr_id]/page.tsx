@@ -119,6 +119,7 @@ export default function BaggagePage() {
       ...record,
       baggage: [...record.baggage, newBag],
       timestamp: new Date().toISOString(),
+      synced: false, // Mark as unsynced when baggage is added
     }
 
     try {
@@ -161,6 +162,7 @@ export default function BaggagePage() {
       ...record,
       baggage: record.baggage.filter(b => b.tagNumber !== tagNumber),
       timestamp: new Date().toISOString(),
+      synced: false, // Mark as unsynced when baggage is removed
     }
 
     try {

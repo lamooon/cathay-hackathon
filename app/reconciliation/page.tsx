@@ -20,6 +20,7 @@ export default function ReconciliationPage() {
   const [syncing, setSyncing] = useState(false)
   const [editingItem, setEditingItem] = useState<QueuedAction | null>(null)
   const [editForm, setEditForm] = useState<CheckInRecord | null>(null)
+  const [syncedCount, setSyncedCount] = useState(0)
 
   useEffect(() => {
     loadQueue()
@@ -32,6 +33,10 @@ export default function ReconciliationPage() {
       await db.init()
       const allQueue = await db.getAllQueue()
       setQueue(allQueue.sort((a, b) => b.timestamp - a.timestamp))
+      
+      // Get synced count from actual records, not queue
+      const stats = await db.getCheckInStats()
+      setSyncedCount(stats.synced)
     } catch (err) {
       console.error('[Skylytics] Failed to load queue:', err)
     } finally {
@@ -122,6 +127,9 @@ export default function ReconciliationPage() {
   const pendingCount = queue.filter(q => q.status === 'pending').length
   const failedCount = queue.filter(q => q.status === 'failed').length
   const queueSyncedCount = queue.filter(q => q.status === 'synced').length
+  
+  // Completed count comes from actual synced records in DB, not queue
+  const completedCount = syncedCount
 
   if (loading) {
     return (
@@ -172,12 +180,12 @@ export default function ReconciliationPage() {
             <Card>
               <CardHeader className="pb-3">
                 <CardDescription>Completed</CardDescription>
-                <CardTitle className="text-3xl text-emerald-600">{queueSyncedCount}</CardTitle>
+                <CardTitle className="text-3xl text-emerald-600">{completedCount}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <CheckCircle2 className="size-4" />
-                  Successfully synced
+                  Total synced records
                 </div>
               </CardContent>
             </Card>

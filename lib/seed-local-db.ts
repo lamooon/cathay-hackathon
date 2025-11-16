@@ -43,7 +43,7 @@ function generateMockPassenger(index: number) {
     baggage: [],
     timestamp: new Date().toISOString(),
     deskId: `DESK-${Math.floor(Math.random() * 10) + 1}`,
-    synced: true,
+    synced: false,
     checkedIn: false,
   }
 }
