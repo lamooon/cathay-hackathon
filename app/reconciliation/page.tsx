@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { ArrowLeft, RefreshCw, CheckCircle2, XCircle, Clock, Edit, Upload, Trash2 } from 'lucide-react'
+import { ArrowLeft, RefreshCw, CheckCircle2, XCircle, Clock, Edit, Upload, Trash2, AlertTriangle } from 'lucide-react'
 import Link from 'next/link'
 
 export default function ReconciliationPage() {
@@ -108,6 +108,25 @@ export default function ReconciliationPage() {
     }
   }
 
+  async function handleResetDatabase() {
+    if (!confirm('⚠️ WARNING: This will delete ALL local data including check-ins, baggage records, and sync queue. This cannot be undone. Continue?')) {
+      return
+    }
+
+    if (!confirm('Are you absolutely sure? This is your last chance to cancel.')) {
+      return
+    }
+
+    try {
+      await db.clearAllData()
+      alert('Database reset successfully. You can now import fresh data.')
+      await loadQueue()
+    } catch (err) {
+      console.error('[Skylytics] Failed to reset database:', err)
+      alert('Failed to reset database')
+    }
+  }
+
 
 
   function formatDateTime(timestamp: number): string {
@@ -123,8 +142,9 @@ export default function ReconciliationPage() {
     })
   }
 
-  // Sync queue should be actual pending queue items, not all unsynced records
-  const pendingCount = queue.filter(q => q.status === 'pending').length
+  // Sync queue should be # of unique passengers changed, not # of baggage operations
+  const pendingPassengers = new Set(queue.filter(q => q.status === 'pending').map(q => q.payload.pnr))
+  const pendingCount = pendingPassengers.size
   const failedCount = queue.filter(q => q.status === 'failed').length
   const queueSyncedCount = queue.filter(q => q.status === 'synced').length
   
@@ -172,7 +192,7 @@ export default function ReconciliationPage() {
               <CardContent>
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Clock className="size-4" />
-                  Pending operations
+                  Passengers pending sync
                 </div>
               </CardContent>
             </Card>
@@ -225,14 +245,14 @@ export default function ReconciliationPage() {
                   Clear Synced Queue ({queueSyncedCount})
                 </Button>
               )}
-              {/*<Button
+              {/* {<Button
                 variant="destructive"
                 onClick={handleResetDatabase}
                 className="gap-2 ml-auto"
               >
                 <AlertTriangle className="size-4" />
                 Reset Database
-              </Button>*/}
+              </Button>} */}
             </CardContent>
           </Card>
 
