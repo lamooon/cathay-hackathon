@@ -74,10 +74,10 @@ export default function HomePage() {
     async function initDB() {
       try {
         await db.init()
-        const existingRecords = await db.getAllCheckIns()
-        setRecordCount(existingRecords.length)
+        const count = await db.getRecordCount()
+        setRecordCount(count)
         setDbReady(true)
-        console.log('[Skylytics] Database initialized with', existingRecords.length, 'records')
+        console.log('[Skylytics] Database initialized with', count, 'records')
       } catch (error) {
         console.error('[Skylytics] Failed to initialize database:', error)
       }
@@ -97,8 +97,8 @@ export default function HomePage() {
         await db.saveCheckIn(record)
       }
       
-      const allRecords = await db.getAllCheckIns()
-      setRecordCount(allRecords.length)
+      const count = await db.getRecordCount()
+      setRecordCount(count)
       console.log('[Skylytics] Loaded', records.length, 'records into database')
       
       // Show message temporarily
@@ -155,8 +155,8 @@ export default function HomePage() {
       
       // Reinitialize
       await db.init()
-      const existingRecords = await db.getAllCheckIns()
-      setRecordCount(existingRecords.length)
+      const count = await db.getRecordCount()
+      setRecordCount(count)
       
       console.log('[Skylytics] Database cleared')
     } catch (err) {

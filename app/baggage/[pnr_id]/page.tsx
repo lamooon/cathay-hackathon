@@ -52,17 +52,7 @@ export default function BaggagePage() {
     }
   }, [record])
 
-  // Auto-scan simulation - only once when page loads
-  useEffect(() => {
-    if (record && !isScanning && !barcodeInput && record.baggage.length === 0) {
-      // Auto-start scanning after 2-3 seconds
-      const delay = 2000 + Math.random() * 1000
-      const timer = setTimeout(() => {
-        startAutoScan()
-      }, delay)
-      return () => clearTimeout(timer)
-    }
-  }, [record])
+
 
   async function loadRecord() {
     try {

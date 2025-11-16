@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { ArrowLeft, RefreshCw, CheckCircle2, XCircle, Clock, Edit, Upload, Trash2, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, RefreshCw, CheckCircle2, XCircle, Clock, Edit, Upload, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 
 export default function ReconciliationPage() {
@@ -20,8 +20,6 @@ export default function ReconciliationPage() {
   const [syncing, setSyncing] = useState(false)
   const [editingItem, setEditingItem] = useState<QueuedAction | null>(null)
   const [editForm, setEditForm] = useState<CheckInRecord | null>(null)
-  const [syncedCount, setSyncedCount] = useState(0)
-  const [notSyncedCount, setNotSyncedCount] = useState(0)
 
   useEffect(() => {
     loadQueue()
@@ -34,14 +32,6 @@ export default function ReconciliationPage() {
       await db.init()
       const allQueue = await db.getAllQueue()
       setQueue(allQueue.sort((a, b) => b.timestamp - a.timestamp))
-
-      // Get all check-in records to calculate stats
-      const allRecords = await db.getAllCheckIns()
-      const synced = allRecords.filter(r => r.synced && r.checkedIn).length
-      const notSynced = allRecords.filter(r => !r.synced && r.checkedIn).length
-
-      setSyncedCount(synced)
-      setNotSyncedCount(notSynced)
     } catch (err) {
       console.error('[Skylytics] Failed to load queue:', err)
     } finally {
@@ -113,20 +103,7 @@ export default function ReconciliationPage() {
     }
   }
 
-  async function handleResetDatabase() {
-    if (!confirm('⚠️ This will delete ALL data from the local database. Are you sure?')) {
-      return
-    }
 
-    try {
-      await db.clearAllData()
-      alert('Database cleared successfully. Reload the page to reseed with sample data.')
-      await loadQueue()
-    } catch (err) {
-      console.error('[Skylytics] Failed to clear database:', err)
-      alert('Failed to clear database')
-    }
-  }
 
   function formatDateTime(timestamp: number): string {
     const date = new Date(timestamp)
@@ -141,8 +118,8 @@ export default function ReconciliationPage() {
     })
   }
 
-  // Sync queue should be number of records not yet synced
-  const pendingCount = notSyncedCount
+  // Sync queue should be actual pending queue items, not all unsynced records
+  const pendingCount = queue.filter(q => q.status === 'pending').length
   const failedCount = queue.filter(q => q.status === 'failed').length
   const queueSyncedCount = queue.filter(q => q.status === 'synced').length
 
@@ -187,15 +164,15 @@ export default function ReconciliationPage() {
               <CardContent>
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Clock className="size-4" />
-                  Δ Checked-in passengers
+                  Pending operations
                 </div>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="pb-3">
-                <CardDescription>Synced</CardDescription>
-                <CardTitle className="text-3xl text-emerald-600">{syncedCount}</CardTitle>
+                <CardDescription>Completed</CardDescription>
+                <CardTitle className="text-3xl text-emerald-600">{queueSyncedCount}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -240,14 +217,14 @@ export default function ReconciliationPage() {
                   Clear Synced Queue ({queueSyncedCount})
                 </Button>
               )}
-              {/* <Button
+              {/*<Button
                 variant="destructive"
                 onClick={handleResetDatabase}
                 className="gap-2 ml-auto"
               >
                 <AlertTriangle className="size-4" />
                 Reset Database
-              </Button> */}
+              </Button>*/}
             </CardContent>
           </Card>
 

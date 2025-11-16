@@ -23,13 +23,20 @@ export default function CheckInPage() {
 
   useEffect(() => {
     db.init().catch(console.error)
-    loadAllPNRs()
   }, [])
 
   useEffect(() => {
-    if (pnr.trim()) {
-      const filtered = allPNRs.filter(p => p.toUpperCase().includes(pnr.toUpperCase()))
-      setFilteredPNRs(filtered.slice(0, 10)) // Limit to 10 suggestions
+    // Lazy load PNRs only when user starts typing
+    if (pnr.trim() && allPNRs.length === 0) {
+      loadAllPNRs()
+    }
+  }, [pnr])
+
+  useEffect(() => {
+    if (pnr.trim() && allPNRs.length > 0) {
+      const searchTerm = pnr.toUpperCase()
+      const filtered = allPNRs.filter(p => p.includes(searchTerm)).slice(0, 10)
+      setFilteredPNRs(filtered)
       setShowDropdown(filtered.length > 0)
     } else {
       setFilteredPNRs([])
@@ -39,8 +46,7 @@ export default function CheckInPage() {
 
   async function loadAllPNRs() {
     try {
-      const allRecords = await db.getAllCheckIns()
-      const uniquePNRs = Array.from(new Set(allRecords.map(r => r.pnr)))
+      const uniquePNRs = await db.getAllPNRs()
       setAllPNRs(uniquePNRs)
     } catch (err) {
       console.error('[Skylytics] Failed to load PNRs:', err)

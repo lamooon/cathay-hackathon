@@ -53,11 +53,11 @@ export class SyncManager {
         action.payload.synced = true
         await db.saveCheckIn(action.payload)
         
-        // Remove from sync queue after successful sync
-        await db.deleteQueueItem(action.id)
+        // Mark queue item as synced (keep for history)
+        await db.updateQueueStatus(action.id, 'synced')
         
         success++
-        console.log('[Skylytics] Synced and removed from queue:', action.payload.pnr_id)
+        console.log('[Skylytics] Synced:', action.payload.pnr_id)
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error'
         console.error('[Skylytics] Failed to sync:', action.payload.pnr_id, errorMessage)

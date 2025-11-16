@@ -95,6 +95,44 @@ class SkylyticsDB {
     })
   }
 
+  async getAllPNRs(): Promise<string[]> {
+    if (!this.db) throw new Error('Database not initialized')
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(STORES.CHECK_INS, 'readonly')
+      const store = transaction.objectStore(STORES.CHECK_INS)
+      const index = store.index('pnr')
+      const request = index.openKeyCursor(null, 'nextunique')
+      
+      const pnrs: string[] = []
+      
+      request.onsuccess = (event) => {
+        const cursor = (event.target as IDBRequest).result
+        if (cursor) {
+          pnrs.push(cursor.key as string)
+          cursor.continue()
+        } else {
+          resolve(pnrs)
+        }
+      }
+      
+      request.onerror = () => reject(request.error)
+    })
+  }
+
+  async getRecordCount(): Promise<number> {
+    if (!this.db) throw new Error('Database not initialized')
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(STORES.CHECK_INS, 'readonly')
+      const store = transaction.objectStore(STORES.CHECK_INS)
+      const request = store.count()
+
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+    })
+  }
+
   async addToQueue(action: QueuedAction): Promise<void> {
     if (!this.db) throw new Error('Database not initialized')
 
@@ -186,6 +224,38 @@ class SkylyticsDB {
 
       transaction.oncomplete = () => resolve()
       transaction.onerror = () => reject(transaction.error)
+    })
+  }
+
+  async getCheckInStats(): Promise<{ synced: number; notSynced: number; total: number }> {
+    if (!this.db) throw new Error('Database not initialized')
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(STORES.CHECK_INS, 'readonly')
+      const store = transaction.objectStore(STORES.CHECK_INS)
+      const request = store.openCursor()
+      
+      let synced = 0
+      let notSynced = 0
+      let total = 0
+      
+      request.onsuccess = (event) => {
+        const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result
+        if (cursor) {
+          total++
+          const record = cursor.value as CheckInRecord
+          if (record.synced) {
+            synced++
+          } else {
+            notSynced++
+          }
+          cursor.continue()
+        } else {
+          resolve({ synced, notSynced, total })
+        }
+      }
+      
+      request.onerror = () => reject(request.error)
     })
   }
 }
